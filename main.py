@@ -95,7 +95,7 @@ def main() -> None:
     if response.content == b"":
         print("accessToken killed")
     else:
-        print("Could not kill access token: ", end="")
+        print("Could not kill access token, ", end="")
         response_data = json.loads(response.content.decode("utf-8"))
         checkError(response_data)
 
