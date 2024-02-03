@@ -20,7 +20,7 @@ def main() -> None:
     # using code to obtain accessToken and other data
     response = requests.post(url=api.URL2, headers=api.headers, data=body)
     response_data = json.loads(response.content.decode("utf-8"))
-    checkError(response_data)
+    checkError(response_data, [])
 
     accessToken = response_data["access_token"]
     account_id = response_data["account_id"]
@@ -50,6 +50,7 @@ def main() -> None:
             selected_item = parsed_shop[int(item_number) - 1]
             offerid = selected_item["offerid"]
             price = selected_item["price"]
+            name = selected_item["name"]
             break
         else:
             print("Invalid item number!\n")
@@ -68,7 +69,8 @@ def main() -> None:
     # purchasing item
     response = requests.post(url=api.grant_operationUrl("PurchaseCatalogEntry", account_id, "common_core"), headers=api_header_with_json, json=payload)
     response_data = json.loads(response.content.decode("utf-8"))
-    checkError(response_data)
+    checkError(response_data, [api, accessToken, api_header])
+    print(f"Purchased {name}")
 
     while True:
         choice = input("Do you want to cancel purchase? [y]/[n]: ")
@@ -83,7 +85,8 @@ def main() -> None:
                 }
                 response = requests.post(url=api.grant_operationUrl("RefundMtxPurchase", account_id, "common_core"), headers=api_header_with_json, json=payload)
                 response_data = json.loads(response.content.decode("utf-8"))
-                checkError(response_data)
+                checkError(response_data, [api, accessToken, api_header])
+                print(f"Cancelled purchase of {name}")
                 break
         elif choice == "n":
             break
@@ -91,19 +94,7 @@ def main() -> None:
             print("Invalid choice!\n")
 
     # killing access token for no ratelimiting
-    response = requests.delete(url=api.KILL_AUTH_URL + accessToken, headers=api_header)
-    if response.content == b"":
-        print("accessToken killed")
-    else:
-        print("Could not kill access token, ", end="")
-        response_data = json.loads(response.content.decode("utf-8"))
-        checkError(response_data)
-
-def checkError(response_data: dict) -> None:
-    if "errorCode" in response_data:
-        err = response_data["errorMessage"]
-        print(f"Error with request: {err}")
-        exit(-1)
+    kill_accessToken(api, accessToken, api_header)
 
 def checkNumber(number: str, itemShop: list) -> bool:
     if number.isdigit():
@@ -114,6 +105,23 @@ def checkNumber(number: str, itemShop: list) -> bool:
             return False
     else:
         return False
+    
+def kill_accessToken(api: Api, accessToken: str, api_header: dict) -> None:
+    response = requests.delete(url=api.KILL_AUTH_URL + accessToken, headers=api_header)
+    if response.content == b"":
+        print("accessToken killed")
+    else:
+        print("Could not kill access token, ", end="")
+        response_data = json.loads(response.content.decode("utf-8"))
+        checkError(response_data, [])
+
+def checkError(response_data: dict, kill_token: list) -> None:
+    if "errorCode" in response_data:
+        err = response_data["errorMessage"]
+        print(f"Error with request: {err}") 
+        if len(kill_token) == 3:
+            kill_accessToken(kill_token[0], kill_token[1], kill_token[2])
+        exit(-1)  
 
 if __name__ == "__main__":
    main()
