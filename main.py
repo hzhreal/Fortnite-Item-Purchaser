@@ -83,7 +83,6 @@ def main() -> None:
                 }
                 response = requests.post(url=api.grant_operationUrl("RefundMtxPurchase", account_id, "common_core"), headers=api_header_with_json, json=payload)
                 response_data = json.loads(response.content.decode("utf-8"))
-                print(response_data)
                 checkError(response_data)
                 break
         elif choice == "n":
