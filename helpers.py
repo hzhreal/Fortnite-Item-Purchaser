@@ -33,6 +33,15 @@ class Api:
     @staticmethod
     def grant_operationUrl(operation: str, account_id: str, profile_id: str) -> str:
         return f"https://fortnite-public-service-prod11.ol.epicgames.com/fortnite/api/game/v2/profile/{account_id}/client/{operation}?profileId={profile_id}&rvn=-1"
+    
+    @staticmethod
+    def calculate_vbucks(data: dict) -> int:
+        items = data["profileChanges"][0]["profile"]["items"]
+        vbucks_balance = 0
+        for item in items:
+            if items[item]["templateId"].startswith("Currency:Mtx"):
+                vbucks_balance += items[item]["quantity"]
+        return vbucks_balance
 
 class Parser:
     def __init__(self, itemShop: dict) -> None:
