@@ -1,22 +1,25 @@
 import requests
-from helpers import Api, Parser
 import json
+import os
+from helpers import Api, Parser
 
 FORTNITE_SHOP_URL = "https://fortnite-api.com/v2/shop/br/combined"
     
 def main() -> None:
     api = Api()
     print("Fortnite Item Purchaser: Made by hzh.")
-    print(f"Open this url while you are logged into your account and obtain the code\n{api.URL}\n")
+    print(f"Open this url while you are logged into your account and obtain the code.\n{api.URL}\n")
     
     while True:
         code = input("Input the code here: ")
         if len(code) == 32:
+            os.system("cls" if os.name == "nt" else "clear")
             break
         else:
             print("Invalid code!\n")
 
     body = api.grant_body(code) # getting the header that needs the code for auth
+
     # using code to obtain accessToken and other data
     response = requests.post(url=api.URL2, headers=api.headers, data=body)
     response_data = json.loads(response.content.decode("utf-8"))
@@ -28,7 +31,7 @@ def main() -> None:
     expires_in = response_data["expires_in"]
     api_header = api.grant_token(accessToken) # obtaining new header for auth
 
-    print(f"\nWelcome {username}, token expires in {expires_in}\n")
+    print(f"Welcome {username}, token expires in {expires_in}\n")
 
     # obtaining the item shop data and printing it out
     response = requests.get(url=FORTNITE_SHOP_URL)
@@ -42,7 +45,40 @@ def main() -> None:
         name = [elem for elem in name if elem != 1 and elem != "1" and elem != "x"]
         name = " ".join(name[:-3])
         price = item["price"]
+        item["name"] = name
         print(f"{index}. {name}\nPrice: {price} Vbucks\n")
+
+    # Make header to send json content
+    json_header = {"Content-Type": "application/json"}
+    api_header_with_json = {**json_header, **api_header}
+
+    # Obtain vbucks data
+    vbucks_balance = obtain_vbucks_bal(api, account_id, api_header_with_json)
+    print(f"You have: {vbucks_balance} Vbucks available.\n")
+
+    # Input user to purchase item and cancel purchase right after, user can do this as long as wanted. However, token might expire.
+    while True:
+        answer = input("Do you want to purchase an item? [y/n]: ")
+        if answer.lower() == "y":
+            purchase_prompt(api, account_id, api_header_with_json, api_header, accessToken, parsed_shop)
+        elif answer.lower() == "n":
+            break
+        else:
+            print("Invalid answer!\n")
+    
+    # killing access token for no ratelimiting
+    kill_accessToken(api, accessToken, api_header)
+
+def purchase_prompt(api: Api, account_id: str, api_header_with_json: dict, api_header: dict, accessToken: str, parsed_shop: list) -> None:
+    def cancel_purchase(purchase_id: str) -> dict:
+        payload = {
+                    "purchaseId": purchase_id,
+                    "quickReturn": True
+                }
+        response = requests.post(url=api.grant_operationUrl("RefundMtxPurchase", account_id, "common_core"), headers=api_header_with_json, json=payload)
+        response_data = json.loads(response.content.decode("utf-8"))
+        checkError(response_data, [api, accessToken, api_header])
+        return response_data
 
     while True:
         item_number = input("Input the number of the item you want to purchase: ")
@@ -55,7 +91,7 @@ def main() -> None:
         else:
             print("Invalid item number!\n")
     
-    payload = {
+    purchase_payload = {
         "offerId": offerid,
         "purchaseQuantity": 1,
         "currency": "MtxCurrency",
@@ -63,48 +99,52 @@ def main() -> None:
         "gameContext": "",
         "currencySubType": ""
     }
-    json_header = {"Content-Type": "application/json"}
-    api_header_with_json = {**json_header, **api_header}
 
-    # purchasing item
-    response = requests.post(url=api.grant_operationUrl("PurchaseCatalogEntry", account_id, "common_core"), headers=api_header_with_json, json=payload)
+    response = requests.post(url=api.grant_operationUrl("PurchaseCatalogEntry", account_id, "common_core"), headers=api_header_with_json, json=purchase_payload)
     response_data = json.loads(response.content.decode("utf-8"))
     checkError(response_data, [api, accessToken, api_header])
     print(f"Purchased {name}")
 
     while True:
-        choice = input("Do you want to cancel purchase? [y]/[n]: ")
-        if choice == "y":
-            last_purchased = response_data["profileChanges"][0]["profile"]["stats"]["attributes"]["mtx_purchase_history"]["purchases"][-1]
-            purchase_id = last_purchased["purchaseId"]
-            last_offerid = last_purchased["offerId"]
+        choice = input("\nDo you want to cancel purchase? [y]/[n]: ")
+        if choice.lower() == "y":
+            purchases = response_data["profileChanges"][0]["profile"]["stats"]["attributes"]["mtx_purchase_history"]["purchases"]
+            last_purchase_id = purchases[-1]["purchaseId"]
+            last_offerid = purchases[-1]["offerId"]
             if offerid == last_offerid:
-                payload = {
-                    "purchaseId": purchase_id,
-                    "quickReturn": True
-                }
-                response = requests.post(url=api.grant_operationUrl("RefundMtxPurchase", account_id, "common_core"), headers=api_header_with_json, json=payload)
-                response_data = json.loads(response.content.decode("utf-8"))
-                checkError(response_data, [api, accessToken, api_header])
+                response_data = cancel_purchase(last_purchase_id)
                 print(f"Cancelled purchase of {name}")
                 break
-        elif choice == "n":
+            else:
+                for purchase in response_data["profileChanges"][0]["profile"]["stats"]["attributes"]["mtx_purchase_history"]["purchases"]:
+                    purchase_id = purchase["purchaseId"]
+                    if purchase["offerId"] == offerid:
+                        response_data = cancel_purchase(purchase_id)
+                        print(f"Cancelled purchase of {name}")
+                        break
+                break
+        elif choice.lower() == "n":
             break
         else:
             print("Invalid choice!\n")
 
-    # killing access token for no ratelimiting
-    kill_accessToken(api, accessToken, api_header)
+    vbucks_balance = api.calculate_vbucks(response_data)
+    print(f"\nYou have {vbucks_balance} Vbucks left.\n")
 
 def checkNumber(number: str, itemShop: list) -> bool:
-    if number.isdigit():
-        number = int(number)
-        if 1 < number <= len(itemShop):
-            return True
-        else: 
+        if number.isdigit():
+            number = int(number)
+            if 1 < number <= len(itemShop):
+                return True
+            else: 
+                return False
+        else:
             return False
-    else:
-        return False
+    
+def obtain_vbucks_bal(api: Api, account_id: str, api_header_with_json: dict) -> int:
+    response = requests.post(url=api.grant_operationUrl("QueryProfile", account_id, "common_core"), headers=api_header_with_json, json={})
+    profile_data = json.loads(response.content.decode("utf-8"))
+    return api.calculate_vbucks(profile_data)
     
 def kill_accessToken(api: Api, accessToken: str, api_header: dict) -> None:
     response = requests.delete(url=api.KILL_AUTH_URL + accessToken, headers=api_header)
