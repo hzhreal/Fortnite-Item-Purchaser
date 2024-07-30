@@ -1,6 +1,5 @@
 import requests
 import json
-import os
 from helpers import Api, Parser
 
 FORTNITE_SHOP_URL = "https://fortnite-api.com/v2/shop/br/combined"
@@ -13,7 +12,6 @@ def main() -> None:
     while True:
         code = input("Input the code here: ")
         if len(code) == 32:
-            os.system("cls" if os.name == "nt" else "clear")
             break
         else:
             print("Invalid code!\n")
